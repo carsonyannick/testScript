@@ -81,7 +81,8 @@ function hashh
     output=$(echo $output | sed 's/.*\([0-9a-f]\{13\}\)$/\1/')
     # echo " second " $output "\n"
     output=$(printf "%d" 0x$output)
-    output=$(echo $output | sed "s/\([0-9]\{$idSize\}\).*/\1/")
+    # output=$(echo $output | sed "s/\([0-9]\{$idSize\}\).*/\1/")
+    output=$(echo $output | sed "s/.*\([0-9]\{$idSize\}\)$/\1/")
     echo $output
 }
 
@@ -128,7 +129,6 @@ function getElementAtIndex()
 {
     local element=${masterNameArray[$1]}
     local onePast=$(($1+1))
-    # masterNameArray=( "${masterNameArray[@]:0:$1}" "${masterNameArray[@]:$onePast}" )
     masterNameArray=( "${masterNameArray[@]:0:$1}" "${masterNameArray[@]:$onePast}" )
     eval $2='$element'
 }
@@ -142,12 +142,42 @@ function sendd
 
 function addRandom
 {
-    hashSeed
+    # hashSeed
     local index=$(getRandomIndex)
     getElementAtIndex $index name
     local output=$(add "$name")
     output=$(sendd "$output")
-    echo $output
+    eval $1='$name'
+}
+
+function getAction
+{
+    local action=$(echo $seed | sed 's/.*\([0-9a-f]\{1\}\)$/\1/')
+    action=$(echo $action | awk '{print toupper($0)}')
+    action=$( echo "obase=2; ibase=16; $action" | bc )
+    action=$(echo $action | sed 's/.*\([0-1]\{2\}\)$/\1/')
+
+    if [ "$action" == "0" ]; then
+        echo "add"
+        return
+    fi
+
+    if [ "$action" == "1" ]; then
+        echo "search_existing"
+        return
+    fi
+
+    if [ "$action" == "10" ]; then
+        echo "search_non-existing"
+        return
+    fi
+
+    if [ "$action" == "11" ]; then
+        echo "delete"
+        return
+    fi
+
+    echo $action
 }
 
 checkInputFile $inputFile
@@ -160,7 +190,6 @@ echo "validation Frequency " $validationFrequency
 echo "initalSize " $initalSize 
 
 mapfile -t masterNameArray < $inputFile
-
 
 # output=$(add "2342342")
 # echo "output"  "$output"
@@ -188,6 +217,7 @@ mapfile -t masterNameArray < $inputFile
 # do
 #     match=0
 #     nameHash=$(hashh "$i")
+#     # echo "nameHash "$nameHash
 
 #     for j in "${masterNameArray[@]}"
 #     do
@@ -226,8 +256,28 @@ mapfile -t masterNameArray < $inputFile
 
 # TODO check if initalSize is !> masterNameArray size
 arraySize=${#masterNameArray[@]}
+
+declare -A initalNames
+
 for ((i=0;i<initalSize;++i))
 do
-    addRandom
-    echo "done adding"
+    addRandom $name
+    echo "done adding " $name
+    initalNames[$(hashh $name)]=$name
+    echo "Name in initalNames[$(hashh $name)] = "${initalNames[$(hashh $name)]}
+done
+
+echo " masterNameArray size " ${#masterNameArray[@]}
+echo " initalNames size " ${#initalNames[@]}
+
+while [ ${#masterNameArray[@]} -ne 0 ] && [ ${#initalNames[@]} -ne 0 ]
+do
+    hashSeed
+    action=$(getAction)
+
+    if [ "$action" == "add" ]; then
+        addRandom
+    fi
+    echo "inside while"
+
 done
