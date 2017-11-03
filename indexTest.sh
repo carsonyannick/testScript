@@ -2,6 +2,7 @@
 numRE='^[0-9]+$'
 
 # sockets
+# mapCppSocket="/tmp/cppMap-socket"
 mapCppSocket="/tmp/cppMap-socket"
 
 # size of integer used to idenfitfy each name
@@ -83,12 +84,9 @@ initalSize=$(checkInitalSize $initalSize)
 
 function hashh
 {
-    local output=$(echo $1 | md5sum | sed 's/\([0-9a-f]*\).*/\1/')
-    # echo " first " $output "\n"
+    local output=$(echo "$1" | md5sum | sed 's/\([0-9a-f]*\).*/\1/')
     output=$(echo $output | sed 's/.*\([0-9a-f]\{13\}\)$/\1/')
-    # echo " second " $output "\n"
     output=$(printf "%d" 0x$output)
-    # output=$(echo $output | sed "s/\([0-9]\{$idSize\}\).*/\1/")
     output=$(echo $output | sed "s/.*\([0-9]\{$idSize\}\)$/\1/")
     echo $output
 }
@@ -118,11 +116,16 @@ function delete
     echo "$output"
 }
 
+function search
+{
+    local output="search|"
+    output="$output$(hashh "$1")|$(dataLength "$1")$1"
+    echo "$output"
+}
+
 function hashSeed
 {
-    # echo "seed before $seed"
     seed=$(echo $seed | md5sum | sed 's/\([0-9a-f]*\).*/\1/')
-    # echo "seed after $seed"
 }
 
 function getRandomIndexInMasterArray
@@ -130,6 +133,10 @@ function getRandomIndexInMasterArray
     local seedInDec=$(echo $seed | sed 's/.*\([0-9a-f]\{13\}\)$/\1/')
     seedInDec=$(printf "%d" 0x$seedInDec)
     local arraySize=${#masterNameArray[@]}
+    if [ $arraySize -eq 0 ]; then
+        echo "masterNameArray empty..."
+        return
+    fi
     local index=$((seedInDec%arraySize))
     echo $index
 }
@@ -139,6 +146,10 @@ function getRandomIndexInAddedArray
     local seedInDec=$(echo $seed | sed 's/.*\([0-9a-f]\{13\}\)$/\1/')
     seedInDec=$(printf "%d" 0x$seedInDec)
     local arraySize=${#added[@]}
+    if [ $arraySize -eq 0 ]; then
+        echo "added Array empty..."
+        return
+    fi
     local index=$((seedInDec%arraySize))
     echo $index
 }
@@ -161,7 +172,7 @@ function getElementAtIndexInAddedArray()
 
 function sendd
 {
-    echo "sending " "$1"
+    # echo "sending " "$1"
     local output=$(echo "$1" | socat - UNIX-CLIENT:/tmp/cppMap-socket)
     echo $output
 }
@@ -169,13 +180,16 @@ function sendd
 function checkInital
 {
     local Hash=$(hashh "$1")
-    local test=${initalNames[$Hash]}
+    local test=${initalNames["$Hash"]}
+    
     if ! [ -z "$test" ]; then
         if [ "$test" != "$1" ]; then
             echo "Something has gone serously wrong.." $test " " $1
             exit 4
         fi
         unset initalNames["$Hash"]
+        echo "Deleted an initally added name " $test
+        echo "Number of initally added names " ${#initalNames[@]}
     fi
 }
 
@@ -186,20 +200,45 @@ function addRandom
     local output=$(add "$name")
     output=$(sendd "$output")
     added+=("$name")
+    echo "Added $name"
+    echo "MasterNameArray size: " ${#masterNameArray[@]}
     eval $1='$name'
 }
 
 function deleteRandom
 {
     local index=$(getRandomIndexInAddedArray)
-    echo "inded: " $index
-    # echo "added Array size before: " ${#added}
     getElementAtIndexInAddedArray $index name
-    # echo "added Array size after: " ${#added}
     local output=$(delete "$name")
     output=$(sendd "$output")
     checkInital "$name"
     eval $1='$name'
+}
+
+function searchExistingRandom
+{
+    local index=$(getRandomIndexInAddedArray)
+    local name=${added[$index]}
+    local output=$(search "$name")
+    output=$(sendd "$output")
+    if [ "$output" != "found $name" ]; then
+        echo "Failed to find existing name: $name, output: $output"
+        exit 5
+    fi
+    echo "Sucessfully [$output]"
+}
+
+function searchNonExistingRandom
+{
+    local index=$(getRandomIndexInMasterArray)
+    local name=${masterNameArray[$index]}
+    local output=$(search "$name")
+    output=$(sendd "$output")
+    if [ "$output" == "found $name" ]; then
+        echo "Found non-existing name: $name, output: $output"
+        exit 5
+    fi
+    echo "Sucessfully [$output] $name"
 }
 
 function getAction
@@ -243,27 +282,6 @@ if [ $initalSize -gt ${#masterNameArray[@]} ]; then
     exit 5
 fi
 
-# output=$(add "2342342")
-# echo "output"  "$output"
-# echo $(sendd "$output")
-# exit 1
-
-# # check for duplicate names
-# for i in "${masterNameArray[@]}"
-# do
-# match=0
-#     for j in "${masterNameArray[@]}"
-#     do
-#         if [ "$i" == "$j" ]; then
-#             match=$[$match+1]
-#         fi
-#         if [ $match -gt 1 ]; then
-#             echo "duplicate name: " $i
-#             exit 5
-#         fi
-#     done
-# done 
-
 # check for duplicate names and hash collisions
 # for i in "${masterNameArray[@]}"
 # do
@@ -300,25 +318,26 @@ fi
 ############## initalization ############## 
 # 1) start all processes
 # maptree
-# /home/aa/rust/mapImplementation/mapTree &
+# kill -2 $(pidof mapTree)
+# /home/aa/rust/mapImplementation/mapTree >mapTreeOut &
 # cppLLRBTree
+kill -2 $(pidof btree)
+/home/aa/rust/b-tree/target/debug/btree
 # /home/aa/rust/cppB-tree/cppLLRBTree &
 # rust implementaiotn 
 # /home/aa/rust/b-tree/target/debug/btree &
 
-arraySize=${#masterNameArray[@]}
+# arraySize=${#masterNameArray[@]}
 
 declare -A initalNames
 added=()
 
 for ((i=0;i<initalSize;++i))
 do
-    addRandom $name
+    addRandom name
     echo "done adding " $name
-    initalNames[$(hashh $name)]=$name
-    echo "Name in initalNames[$(hashh $name)] = "${initalNames[$(hashh $name)]}
-    # added+=('$name')
-    # echo "Added[0] " ${added[0]}
+    initalNames[$(hashh "$name")]=$name
+    echo "Name in initalNames[$(hashh "$name")] = "${initalNames[$(hashh "$name")]}
 done
 
 echo " masterNameArray size " ${#masterNameArray[@]}
@@ -332,25 +351,25 @@ do
 
     if [ "$action" == "add" ]; then
         echo "inside add"
-        # addRandom
+        addRandom name
     fi
 
     if [ "$action" == "search_existing" ]; then
         echo "inside search_existing"
-        # addRandom
+        searchExistingRandom
     fi
 
     if [ "$action" == "search_non-existing" ]; then
         echo "inside search_non-existing"
-        # addRandom
+        searchNonExistingRandom
     fi
 
     if [ "$action" == "delete" ]; then
         echo "inside delete"
-        # addRandom
+        deleteRandom name
     fi
 
-    $count=$[$count+1]
+    count=$[$count+1]
     if [ $count -eq $validationFrequency ]; then
         count=0
         # compare()
