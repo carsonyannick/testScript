@@ -2,8 +2,8 @@
 numRE='^[0-9]+$'
 
 # sockets
-# mapCppSocket="/tmp/cppMap-socket"
 mapCppSocket="/tmp/cppMap-socket"
+# mapCppSocket="/tmp/rustLLRBTSocket"
 
 # size of integer used to idenfitfy each name
 idSize=6;
@@ -95,7 +95,8 @@ function dataLength
 {
     local length=${#1}
     if [ ${#length} -eq 1 ]; then
-        echo $length" "
+        # echo $length" " # works with mapcpp
+        echo "0"$length" "
         return
     fi
 
@@ -173,7 +174,9 @@ function getElementAtIndexInAddedArray()
 function sendd
 {
     # echo "sending " "$1"
-    local output=$(echo "$1" | socat - UNIX-CLIENT:/tmp/cppMap-socket)
+    # local output=$(echo "$1" | socat - UNIX-CLIENT:/tmp/cppMap-socket)
+    # local output=$(echo "$1" | socat - UNIX-CLIENT:/tmp/rustLLRBTSocket)
+    local output=$(echo "$1" | socat - UNIX-CLIENT:$mapCppSocket)
     echo $output
 }
 
@@ -318,11 +321,11 @@ fi
 ############## initalization ############## 
 # 1) start all processes
 # maptree
-# kill -2 $(pidof mapTree)
-# /home/aa/rust/mapImplementation/mapTree >mapTreeOut &
+kill -2 $(pidof mapTree)
+/home/aa/rust/mapImplementation/mapTree >mapTreeOut &
 # cppLLRBTree
-kill -2 $(pidof btree)
-/home/aa/rust/b-tree/target/debug/btree
+# kill -2 $(pidof btree)
+# /home/aa/rust/b-tree/target/debug/btree
 # /home/aa/rust/cppB-tree/cppLLRBTree &
 # rust implementaiotn 
 # /home/aa/rust/b-tree/target/debug/btree &
