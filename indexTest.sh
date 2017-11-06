@@ -3,7 +3,10 @@ numRE='^[0-9]+$'
 
 # sockets
 mapCppSocket="/tmp/cppMap-socket"
-# mapCppSocket="/tmp/rustLLRBTSocket"
+
+socketArray=()
+rustSocket="/tmp/rustLLRBTSocket"
+socketArray+=($rustSocket)
 
 # size of integer used to idenfitfy each name
 idSize=6;
@@ -96,7 +99,7 @@ function dataLength
     local length=${#1}
     if [ ${#length} -eq 1 ]; then
         # echo $length" " # works with mapcpp
-        echo "0"$length" "
+        echo "0"$length
         return
     fi
 
@@ -120,6 +123,13 @@ function delete
 function search
 {
     local output="search|"
+    output="$output$(hashh "$1")|$(dataLength "$1")$1"
+    echo "$output"
+}
+
+function draw
+{
+    local output="draw  |"
     output="$output$(hashh "$1")|$(dataLength "$1")$1"
     echo "$output"
 }
@@ -176,8 +186,9 @@ function sendd
     # echo "sending " "$1"
     # local output=$(echo "$1" | socat - UNIX-CLIENT:/tmp/cppMap-socket)
     # local output=$(echo "$1" | socat - UNIX-CLIENT:/tmp/rustLLRBTSocket)
-    local output=$(echo "$1" | socat - UNIX-CLIENT:$mapCppSocket)
-    echo $output
+    # local output=$(echo "$1" | socat - UNIX-CLIENT:$mapCppSocket)
+    local output=$(echo "$1" | socat - UNIX-CLIENT:$rustSocket)
+    echo "$output"
 }
 
 function checkInital
@@ -244,6 +255,13 @@ function searchNonExistingRandom
     echo "Sucessfully [$output] $name"
 }
 
+function draww
+{
+    output=$(draw "draw")
+    output=$(sendd "$output")
+    echo "$output"
+}
+
 function getAction
 {
     local action=$(echo $seed | sed 's/.*\([0-9a-f]\{1\}\)$/\1/')
@@ -274,6 +292,7 @@ function getAction
     echo $action
 }
 
+
 echo "seed " $seed
 echo "validation Frequency " $validationFrequency
 echo "initalSize " $initalSize 
@@ -285,7 +304,7 @@ if [ $initalSize -gt ${#masterNameArray[@]} ]; then
     exit 5
 fi
 
-# check for duplicate names and hash collisions
+# # check for duplicate names and hash collisions
 # for i in "${masterNameArray[@]}"
 # do
 #     match=0
@@ -321,8 +340,8 @@ fi
 ############## initalization ############## 
 # 1) start all processes
 # maptree
-kill -2 $(pidof mapTree)
-/home/aa/rust/mapImplementation/mapTree >mapTreeOut &
+# kill -3 $(pidof mapTree)
+# /home/aa/rust/mapImplementation/mapTree >mapTreeOut &
 # cppLLRBTree
 # kill -2 $(pidof btree)
 # /home/aa/rust/b-tree/target/debug/btree
@@ -339,6 +358,7 @@ for ((i=0;i<initalSize;++i))
 do
     addRandom name
     echo "done adding " $name
+    # echo "added: $(hashh "$name") "$name""
     initalNames[$(hashh "$name")]=$name
     echo "Name in initalNames[$(hashh "$name")] = "${initalNames[$(hashh "$name")]}
 done
@@ -355,6 +375,7 @@ do
     if [ "$action" == "add" ]; then
         echo "inside add"
         addRandom name
+        echo "added: $(hashh "$name") "$name""
     fi
 
     if [ "$action" == "search_existing" ]; then
@@ -370,11 +391,13 @@ do
     if [ "$action" == "delete" ]; then
         echo "inside delete"
         deleteRandom name
+        echo "deleted $name"
     fi
 
     count=$[$count+1]
     if [ $count -eq $validationFrequency ]; then
         count=0
-        # compare()
+        draw_=$(draww);
+        echo "$draw_"
     fi
 done
