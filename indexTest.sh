@@ -97,7 +97,8 @@ function hashh
     output=$(echo $output | sed 's/.*\([0-9a-f]\{13\}\)$/\1/')
     output=$(printf "%d" 0x$output)
     output=$(echo $output | sed "s/.*\([0-9]\{$idSize\}\)$/\1/")
-    echo $output
+
+    echo "$output"
 }
 
 function dataLength
@@ -190,12 +191,13 @@ function getElementAtIndexInAddedArray()
 function sendd
 {
     unset responseArray
-    echo "inside sendd"
-    local tmp
+    # echo "inside sendd"
+    # local tmp
 
     for socket in "${socketArray[@]}"
     do
-        echo "socket $socket"
+        # echo "socket $socket"
+
         # tmp=$(echo "$1" | socat - UNIX-CLIENT:"$socket")
         # echo "tmp $tmp"
         responseArray+=("$(echo "$1" | socat - UNIX-CLIENT:"$socket")")
@@ -223,10 +225,12 @@ function addRandom
 {
     local index=$(getRandomIndexInMasterArray)
     getElementAtIndexInMasterArray $index name
+    echo "Adding: $(hashh "$name") "$name""
     local output=$(add "$name")
-    output=$(sendd "$output")
+    sendd "$output"
+    compare "add"
     added+=("$name")
-    echo "Added $name"
+    # echo "Added $name"
     echo "MasterNameArray size: " ${#masterNameArray[@]}
     eval $1='$name'
 }
@@ -235,6 +239,7 @@ function deleteRandom
 {
     local index=$(getRandomIndexInAddedArray)
     getElementAtIndexInAddedArray $index name
+    echo "Deleting: $(hashh "$name") "$name""
     local output=$(delete "$name")
     output=$(sendd "$output")
     checkInital "$name"
@@ -245,11 +250,16 @@ function searchExistingRandom
 {
     local index=$(getRandomIndexInAddedArray)
     local name=${added[$index]}
+    echo "Searching (existing): $(hashh "$name") "$name""
     local output=$(search "$name")
     sendd "$output"
     compare "searchExistingRandom"
+    
+    local id=$(hashh "$name")
+    id=$(echo $id | sed "s/0*\([1-9][0-9].*\)$/\1/")
 
-    if [ "${responseArray["0"]}" != "found $name" ]; then
+    # if [ "${responseArray["0"]}" != "found $(hashh "$name") $name" ]; then
+    if [ "${responseArray["0"]}" != "found $id $name" ]; then
         echo "Failed to find existing name: $name, output: [${responseArray["0"]}]"
         exit 5
     fi
@@ -260,13 +270,19 @@ function searchNonExistingRandom
 {
     local index=$(getRandomIndexInMasterArray)
     local name=${masterNameArray[$index]}
+    echo "Searching (non-existing): $(hashh "$name") "$name""
     local output=$(search "$name")
     sendd "$output"
 
     compare "searchNonExistingRandom"
 
-    if [ "${responseArray["0"]}" == "found $name" ]; then
+    local id=$(hashh "$name")
+    id=$(echo $id | sed "s/0*\([1-9][0-9].*\)$/\1/")
+
+    # if [ "${responseArray["0"]}" != "not found $(hashh "$name") $name" ]; then
+    if [ "${responseArray["0"]}" != "not found $id $name" ]; then
         echo "Found non-existing name: $name, output: [${responseArray["0"]}]"
+        echo "hash $id" 
         exit 5
     fi
 
@@ -288,15 +304,15 @@ function compare
     # done
 
     local loop_=0
-    for ((i=1;i<${#responseArray[@]};++i))
+    for ((j=1;j<${#responseArray[@]};++j))
         do
             loop_=$[$loop_+1]
-            if [ "${responseArray[0]}" != "${responseArray["$i"]}" ]; then
+            if [ "${responseArray[0]}" != "${responseArray["$j"]}" ]; then
                 echo "misMatch in draw...."
                 echo "cppMap:" ${socketArray["0"]}
                 echo "${responseArray[0]}"
                 echo "socket:" ${socketArray["$1"]}
-                echo "${responseArray[$i]}"
+                echo "${responseArray[$j]}"
                 exit 1
             fi
         done
@@ -405,10 +421,10 @@ added=()
 for ((i=0;i<initalSize;++i))
 do
     addRandom name
-    echo "done adding " $name
-    # echo "added: $(hashh "$name") "$name""
+    # echo "done adding " $name
     initalNames[$(hashh "$name")]=$name
-    echo "Name in initalNames[$(hashh "$name")] = "${initalNames[$(hashh "$name")]}
+    # echo "Name in initalNames[$(hashh "$name")] = "${initalNames[$(hashh "$name")]}
+    echo "i $i initalSize $initalSize"
 done
 
 echo " masterNameArray size " ${#masterNameArray[@]}
@@ -417,36 +433,38 @@ echo " initalNames size " ${#initalNames[@]}
 count=0
 while [ ${#masterNameArray[@]} -ne 0 ] && [ ${#initalNames[@]} -ne 0 ]
 do
+    echo ""
     hashSeed
     action=$(getAction)
 
     if [ "$action" == "add" ]; then
-        echo "inside add"
+        # echo "inside add"
+        # echo "Adding: $(hashh "$name") "$name""
         addRandom name
-        echo "added: $(hashh "$name") "$name""
     fi
 
     if [ "$action" == "search_existing" ]; then
-        echo "inside search_existing"
+        # echo "inside search_existing"
         searchExistingRandom
     fi
 
     if [ "$action" == "search_non-existing" ]; then
-        echo "inside search_non-existing"
+        # echo "inside search_non-existing"
         searchNonExistingRandom
     fi
 
     if [ "$action" == "delete" ]; then
-        echo "inside delete"
+        # echo "inside delete"
         deleteRandom name
         echo "deleted: $(hashh "$name") "$name""
     fi
 
     count=$[$count+1]
     if [ $count -eq $validationFrequency ]; then
+        echo ""
         count=0
         echo "inside draw"
-        draw_=$(draww);
+        # draw_=$(draww);
         draww;
     fi
 done
