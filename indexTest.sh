@@ -205,7 +205,7 @@ function sendd
 
 }
 
-function checkInital
+function checkIfInitallyAdded
 {
     local Hash=$(hashh "$1")
     local test=${initalNames["$Hash"]}
@@ -216,7 +216,7 @@ function checkInital
             exit 4
         fi
         unset initalNames["$Hash"]
-        echo "Deleted an initally added name " $test
+        # echo "Deleted an initally added name " $test
         echo "Number of initally added names " ${#initalNames[@]}
     fi
 }
@@ -241,8 +241,21 @@ function deleteRandom
     getElementAtIndexInAddedArray $index name
     echo "Deleting: $(hashh "$name") "$name""
     local output=$(delete "$name")
-    output=$(sendd "$output")
-    checkInital "$name"
+    sendd "$output"
+    compare "delete"
+
+    local id=$(hashh "$name")
+    id=$(stripLeadingZeros $id)
+
+    # only checking for names that are actually added as currently
+    # only deleting added names
+    if [ "${responseArray["0"]}" != "deleted $id $name" ]; then
+        echo "Failed to find existing name: $name, output: [${responseArray["0"]}]"
+        echo "id $id"
+        exit 5
+    fi
+
+    checkIfInitallyAdded "$name"
     eval $1='$name'
 }
 
@@ -256,7 +269,7 @@ function searchExistingRandom
     compare "searchExistingRandom"
     
     local id=$(hashh "$name")
-    id=$(echo $id | sed "s/0*\([1-9][0-9].*\)$/\1/")
+    id=$(stripLeadingZeros $id)
 
     # if [ "${responseArray["0"]}" != "found $(hashh "$name") $name" ]; then
     if [ "${responseArray["0"]}" != "found $id $name" ]; then
@@ -277,7 +290,9 @@ function searchNonExistingRandom
     compare "searchNonExistingRandom"
 
     local id=$(hashh "$name")
-    id=$(echo $id | sed "s/0*\([1-9][0-9].*\)$/\1/")
+    # id=$(echo $id | sed "s/0*\([1-9][0-9].*\)$/\1/")
+    id=$(stripLeadingZeros $id)
+    
 
     # if [ "${responseArray["0"]}" != "not found $(hashh "$name") $name" ]; then
     if [ "${responseArray["0"]}" != "not found $id $name" ]; then
@@ -286,6 +301,12 @@ function searchNonExistingRandom
         exit 5
     fi
 
+}
+
+function stripLeadingZeros
+{
+    output=$(echo $1 | sed "s/0*\([1-9][0-9].*\)$/\1/")
+    echo "$output"
 }
 
 function draww
@@ -306,12 +327,13 @@ function compare
     local loop_=0
     for ((j=1;j<${#responseArray[@]};++j))
         do
+            echo "inside for loop"
             loop_=$[$loop_+1]
             if [ "${responseArray[0]}" != "${responseArray["$j"]}" ]; then
-                echo "misMatch in draw...."
+                echo "misMatch in $1 compare...."
                 echo "cppMap:" ${socketArray["0"]}
                 echo "${responseArray[0]}"
-                echo "socket:" ${socketArray["$1"]}
+                echo "socket:" ${socketArray["$j"]}
                 echo "${responseArray[$j]}"
                 exit 1
             fi
@@ -367,38 +389,45 @@ if [ $initalSize -gt ${#masterNameArray[@]} ]; then
     exit 5
 fi
 
-# # check for duplicate names and hash collisions
-# for i in "${masterNameArray[@]}"
-# do
-#     match=0
-#     nameHash=$(hashh "$i")
-#     # echo "nameHash "$nameHash
+# check for duplicate names and hash collisions
+function checkForDupsInInputData
+{
+    echo "Checking for Duplications/Collisions in input data"
+    for i in "${masterNameArray[@]}"
+    do
+        match=0
+        nameHash=$(hashh "$i")
+        # echo "nameHash "$nameHash
 
-#     for j in "${masterNameArray[@]}"
-#     do
-#         lineHash=$(hashh "$j")
+        for j in "${masterNameArray[@]}"
+        do
+            lineHash=$(hashh "$j")
 
-#         # check if name in outter loop and inner loop 
-#         # are only equivalent once
-#         if [ "$i" == "$j" ]; then
-#             match=$[$match+1]
+            # check if name in outter loop and inner loop 
+            # are only equivalent once
+            if [ "$i" == "$j" ]; then
+                match=$[$match+1]
 
-#             # if names are equivalent more than once,
-#             # we have a name duplicate
-#             if [ $match -gt 1 ]; then
-#                 echo "Error! duplicate name: " $i $j
-#                 exit 5
-#             fi
-#             # echo "found equivelent: $i $j"
-#             continue
-#         fi
+                # if names are equivalent more than once,
+                # we have a name duplicate
+                if [ $match -gt 1 ]; then
+                    echo "Error! duplicate name: " $i $j
+                    exit 5
+                fi
+                # echo "found equivelent: $i $j"
+                continue
+            fi
 
-#         if [ "$nameHash" == "$lineHash" ]; then
-#             echo "Error! hash collision!: " $i "("$nameHash") and $j ("$lineHash")"
-#             exit 6
-#         fi
-#     done
-# done 
+            if [ "$nameHash" == "$lineHash" ]; then
+                echo "Error! hash collision!: " $i "("$nameHash") and $j ("$lineHash")"
+                exit 6
+            fi
+        done
+    done 
+    echo "Done Checking for Duplications/Collisions in input data"
+} 
+
+# checkForDupsInInputData
 
 ############## initalization ############## 
 # 1) start all processes
@@ -456,7 +485,6 @@ do
     if [ "$action" == "delete" ]; then
         # echo "inside delete"
         deleteRandom name
-        echo "deleted: $(hashh "$name") "$name""
     fi
 
     count=$[$count+1]
