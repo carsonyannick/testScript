@@ -3,18 +3,24 @@ numRE='^[0-9]+$'
 
 # sockets
 mapCppSocket="/tmp/cppMap-socket"
-
-socketArray=()
 rustSocket="/tmp/rustLLRBTSocket"
+
+# array to put all the sockets in
+socketArray=()
+socketArray+=($mapCppSocket)
 socketArray+=($rustSocket)
 
 # size of integer used to idenfitfy each name
 idSize=6;
 
+# assign inputs to variables
 inputFile=$1
 seed=$2
 validationFrequency=$3
 initalSize=$4
+
+# array used to store the responses from all the different sockets
+responseArray=()
 
 function checkInputFile
 {
@@ -33,7 +39,7 @@ function checkInitalSize
         return
     fi
 
-    if ! [[ $1 =~ $numRE ]] ; then
+    if ! [[ $1 =~ $numRE ]]; then
         # echo "seed not a number, generating seed: " $seed
         echo $initialSize
         return
@@ -183,12 +189,18 @@ function getElementAtIndexInAddedArray()
 
 function sendd
 {
-    # echo "sending " "$1"
-    # local output=$(echo "$1" | socat - UNIX-CLIENT:/tmp/cppMap-socket)
-    # local output=$(echo "$1" | socat - UNIX-CLIENT:/tmp/rustLLRBTSocket)
-    # local output=$(echo "$1" | socat - UNIX-CLIENT:$mapCppSocket)
-    local output=$(echo "$1" | socat - UNIX-CLIENT:$rustSocket)
-    echo "$output"
+    unset responseArray
+    echo "inside sendd"
+    local tmp
+
+    for socket in "${socketArray[@]}"
+    do
+        echo "socket $socket"
+        # tmp=$(echo "$1" | socat - UNIX-CLIENT:"$socket")
+        # echo "tmp $tmp"
+        responseArray+=("$(echo "$1" | socat - UNIX-CLIENT:"$socket")")
+    done
+
 }
 
 function checkInital
@@ -234,12 +246,14 @@ function searchExistingRandom
     local index=$(getRandomIndexInAddedArray)
     local name=${added[$index]}
     local output=$(search "$name")
-    output=$(sendd "$output")
-    if [ "$output" != "found $name" ]; then
-        echo "Failed to find existing name: $name, output: $output"
+    sendd "$output"
+    compare "searchExistingRandom"
+
+    if [ "${responseArray["0"]}" != "found $name" ]; then
+        echo "Failed to find existing name: $name, output: [${responseArray["0"]}]"
         exit 5
     fi
-    echo "Sucessfully [$output]"
+
 }
 
 function searchNonExistingRandom
@@ -247,19 +261,53 @@ function searchNonExistingRandom
     local index=$(getRandomIndexInMasterArray)
     local name=${masterNameArray[$index]}
     local output=$(search "$name")
-    output=$(sendd "$output")
-    if [ "$output" == "found $name" ]; then
-        echo "Found non-existing name: $name, output: $output"
+    sendd "$output"
+
+    compare "searchNonExistingRandom"
+
+    if [ "${responseArray["0"]}" == "found $name" ]; then
+        echo "Found non-existing name: $name, output: [${responseArray["0"]}]"
         exit 5
     fi
-    echo "Sucessfully [$output] $name"
+
 }
 
 function draww
 {
-    output=$(draw "draw")
-    output=$(sendd "$output")
-    echo "$output"
+    local output=$(draw "draw")
+    sendd "$output"
+    compare "draw"
+}
+
+function compare
+{
+
+    # for response in "${responseArray[@]}"
+    # do
+    #     echo "response: $response"
+    # done
+
+    local loop_=0
+    for ((i=1;i<${#responseArray[@]};++i))
+        do
+            loop_=$[$loop_+1]
+            if [ "${responseArray[0]}" != "${responseArray["$i"]}" ]; then
+                echo "misMatch in draw...."
+                echo "cppMap:" ${socketArray["0"]}
+                echo "${responseArray[0]}"
+                echo "socket:" ${socketArray["$1"]}
+                echo "${responseArray[$i]}"
+                exit 1
+            fi
+        done
+
+        if [ $loop_ -eq 0 ]; then
+            echo "Something went terribly wrong..."
+            echo "for loop in compare() was not entered"
+            exit 1
+        fi
+
+    echo "$1 [${responseArray["0"]}] checks out"
 }
 
 function getAction
@@ -285,13 +333,12 @@ function getAction
     fi
 
     if [ "$action" == "11" ]; then
-        echo "delete"
-        return
+    echo "delete"
+    return
     fi
 
     echo $action
 }
-
 
 echo "seed " $seed
 echo "validation Frequency " $validationFrequency
@@ -340,11 +387,12 @@ fi
 ############## initalization ############## 
 # 1) start all processes
 # maptree
-# kill -3 $(pidof mapTree)
-# /home/aa/rust/mapImplementation/mapTree >mapTreeOut &
+kill -2 $(pidof mapTree)
+/home/aa/rust/mapImplementation/mapTree  >/dev/null &
 # cppLLRBTree
-# kill -2 $(pidof btree)
-# /home/aa/rust/b-tree/target/debug/btree
+kill -2 $(pidof btree)
+# rm /tmp/rustLLRBTSocket; 
+/home/aa/rust/b-tree/target/debug/btree >/dev/null &
 # /home/aa/rust/cppB-tree/cppLLRBTree &
 # rust implementaiotn 
 # /home/aa/rust/b-tree/target/debug/btree &
@@ -391,13 +439,14 @@ do
     if [ "$action" == "delete" ]; then
         echo "inside delete"
         deleteRandom name
-        echo "deleted $name"
+        echo "deleted: $(hashh "$name") "$name""
     fi
 
     count=$[$count+1]
     if [ $count -eq $validationFrequency ]; then
         count=0
+        echo "inside draw"
         draw_=$(draww);
-        echo "$draw_"
+        draww;
     fi
 done
